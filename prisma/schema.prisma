@@ -4,8 +4,9 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
@@ -17,21 +18,22 @@ model User {
   email             String         @unique
   name              String?
   is_email_verified Boolean        @default(false)
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
   auth_providers    AuthProvider[] @relation("user_auth_providers")
 
   @@map("users")
 }
 
 model AuthProvider {
-  id            String   @id @default(uuid())
+  id            String   @id @default(cuid())
   user          User     @relation("user_auth_providers", fields: [user_id], references: [id])
   user_id       String
   provider      Provider
-  provider_id   String?
+  provider_id   String
   password_hash String?
   created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
 
   @@unique([provider, provider_id])
   @@map("auth_providers")
