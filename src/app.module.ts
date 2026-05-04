@@ -1,29 +1,30 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import * as Joi from 'joi';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { UsersModule, AuthModule } from '@modules';
+import { appConfig } from './config/app.config';
+import { throttlerConfig } from './config/throttler.config';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      // Указываем какой файл читать — берём из NODE_ENV
-      envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
-      isGlobal: true,
-      cache: true,
-      validationSchema: Joi.object({
-        NODE_ENV: Joi.string().valid('development', 'production').default('development'),
-        PORT: Joi.number().default(3000),
-        FRONTENT_URL: Joi.string().required(),
-        DATABASE_URL: Joi.string().required(),
-        JWT_SECRET: Joi.string().min(32).required(),
-        JWT_EXPIRES_IN: Joi.string().default('7d'),
-      }),
-    }),
+    ThrottlerModule.forRoot(throttlerConfig),
+    ConfigModule.forRoot(appConfig),
     PrismaModule,
+    UsersModule,
+    AuthModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

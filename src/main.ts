@@ -1,9 +1,15 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import cookieParser from 'cookie-parser';
 import { ValidationPipe } from '@nestjs/common';
+
+import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.setGlobalPrefix('api');
+
+  app.use(cookieParser());
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -14,7 +20,7 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: process.env.FRONTENT_URL,
+    origin: process.env.FRONTEND_URL,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,

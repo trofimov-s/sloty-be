@@ -20,6 +20,13 @@
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
     "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "paths": {
+      "@modules": ["src/modules"],
+      "@prisma-generated/*": ["src/generated/*"],
+      "@prisma-service": ["src/prisma"],
+      "@common/enums": ["src/common/enums"],
+      "@common/decorators": ["src/common/decorators"]
+    }
   }
 }
