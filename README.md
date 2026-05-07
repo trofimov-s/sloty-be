@@ -1,1 +1,1 @@
-## Sloty BE
+## Inveleo BE

@@ -1,8 +1,9 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { JwtService, JwtSignOptions } from '@nestjs/jwt';
+import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { type Response } from 'express';
+import { slugify } from 'transliteration';
 
 import { PrismaService } from '@prisma-service';
 import { UsersService } from '../users';
@@ -10,8 +11,9 @@ import { SignupDto } from './dto/signup.dto';
 import { User } from '@prisma-generated/prisma/client';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponse } from './types/auth-response.type';
-import { VALIDATION_ERROR_MAP } from '@common/enums';
+import { ENV_MAP, VALIDATION_ERROR_MAP } from '@common/enums';
 import { ConfigService } from '@nestjs/config';
+import { JwtPayload } from './types/jwt-payload.type';
 
 @Injectable()
 export class AuthService {
@@ -25,22 +27,28 @@ export class AuthService {
   async signup(dto: SignupDto, response: Response): Promise<AuthResponse> {
     const email = this.normalizeEmail(dto.email);
 
-    // 1. Check email is free
+    // Check email is free
     const existing = await this.usersService.findByEmail(email);
 
     if (existing) {
       throw new ConflictException(VALIDATION_ERROR_MAP.USER_WITH_THIS_EMAIL_ALREADY_EXISTS);
     }
 
-    // 2. Password hashing
+    // Generate custom slug
+    const fullName = [dto.first_name, dto.last_name].filter(Boolean).join(' ');
+    const slug = await this.generateSlug(fullName);
+
+    // Password hashing
     const password_hash = await bcrypt.hash(dto.password, 12);
 
-    // 3. Create User and AuthProvider in one transaction
+    // Create User and AuthProvider in one transaction
     const user = await this.prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
-          name: dto.name,
-          email: email,
+          first_name: dto.first_name,
+          last_name: dto.last_name,
+          email,
+          slug,
         },
       });
 
@@ -104,7 +112,7 @@ export class AuthService {
 
     // 2. Токен не найден — либо уже использован, либо поддельный
     if (!tokenRecord) {
-      throw new UnauthorizedException('Refresh token not found');
+      throw new UnauthorizedException(VALIDATION_ERROR_MAP.USER_NOT_FOUND);
     }
 
     // 3. Проверяем что токен не протух
@@ -113,7 +121,7 @@ export class AuthService {
       await this.prisma.refreshToken.delete({
         where: { id: tokenRecord.id },
       });
-      throw new UnauthorizedException('Refresh token is outdated');
+      throw new UnauthorizedException(VALIDATION_ERROR_MAP.USER_NOT_FOUND);
     }
 
     // 4. Выдаём новую пару токенов
@@ -135,11 +143,11 @@ export class AuthService {
   }
 
   private async generateTokenResponse(user: User, response: Response): Promise<AuthResponse> {
-    const payload = { sub: user.id, email: user.email };
+    const payload: JwtPayload = { sub: user.id };
 
     const access_token = await this.jwtService.signAsync(payload, {
-      secret: this.configService.getOrThrow('ACCESS_TOKEN_SECRET'),
-      expiresIn: this.configService.getOrThrow('JWT_ACCESS_EXPIRES_IN'),
+      secret: this.configService.getOrThrow(ENV_MAP.ACCESS_TOKEN_SECRET),
+      expiresIn: this.configService.getOrThrow(ENV_MAP.JWT_ACCESS_EXPIRES_IN),
     });
 
     // Генерируем refresh token — просто случайная строка, не JWT
@@ -167,20 +175,22 @@ export class AuthService {
       access_token,
       user: {
         id: user.id,
-        name: user.name,
+        first_name: user.first_name,
+        last_name: user.last_name,
         email: user.email,
+        slug: user.slug,
       },
     };
   }
 
   // Выносим опции cookie в отдельный метод — используется в нескольких местах
   private getCookieOptions() {
-    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    const isProduction = this.configService.get(ENV_MAP.NODE_ENV) === 'production';
 
     return {
       httpOnly: true, // JavaScript не может прочитать cookie
       secure: isProduction, // только HTTPS на продакшне, HTTP разрешён локально
-      sameSite: isProduction ? 'none' as const : 'lax' as const, // защита от CSRF атак
+      sameSite: isProduction ? ('none' as const) : ('lax' as const), // защита от CSRF атак
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 дней в миллисекундах
       path: '/',
     };
@@ -188,5 +198,24 @@ export class AuthService {
 
   private normalizeEmail(email: string): string {
     return email.toLowerCase().trim();
+  }
+
+  // Генерируем slug автоматически из имени
+  private async generateSlug(name: string): Promise<string> {
+    const base =
+      slugify(name.trim(), {
+        lowercase: true,
+        separator: '-',
+      }) || `master-${crypto.randomBytes(4).toString('hex')}`;
+
+    let slug = base;
+    let counter = 1;
+
+    while (await this.usersService.findBySlug(slug)) {
+      slug = `${base}-${counter}`;
+      counter++;
+    }
+
+    return slug;
   }
 }

@@ -1,4 +1,15 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 
@@ -7,6 +18,8 @@ import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponse } from './types/auth-response.type';
 import { RefreshToken } from '@common/decorators';
+import { VALIDATION_ERROR_MAP } from '@common/enums';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -30,7 +43,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   refresh(@RefreshToken() refreshToken: string, @Res({ passthrough: true }) response: Response): Promise<AuthResponse> {
     if (!refreshToken) {
-      throw new UnauthorizedException('Refresh token does not exist');
+      throw new UnauthorizedException(VALIDATION_ERROR_MAP.USER_NOT_FOUND);
     }
 
     return this.authService.refresh(refreshToken, response);
@@ -41,5 +54,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   logout(@RefreshToken() refreshToken: string, @Res({ passthrough: true }) response: Response) {
     return this.authService.logout(refreshToken, response);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getMe(@Req() req: Request & { user: { id: string; slug: string } }) {
+    return req.user;
   }
 }

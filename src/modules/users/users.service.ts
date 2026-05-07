@@ -17,4 +17,10 @@ export class UsersService {
       where: { id },
     });
   }
+
+  findBySlug(slug: string): Promise<User | null> {
+    return this.prisma.user.findUnique({
+      where: { slug },
+    })
+  }
 }

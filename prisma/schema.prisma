@@ -14,14 +14,26 @@ datasource db {
 }
 
 model User {
-  id                String         @id @default(cuid())
-  email             String         @unique
-  name              String?
-  is_email_verified Boolean        @default(false)
-  created_at        DateTime       @default(now())
-  updated_at        DateTime       @updatedAt
-  auth_providers    AuthProvider[] @relation("user_auth_providers")
-  refresh_tokens    RefreshToken[] @relation("user_refresh_token")
+  // --- Auth ---
+  id                String   @id @default(cuid())
+  email             String   @unique
+  is_email_verified Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  // --- Profile ---
+  first_name String
+  last_name  String?
+  slug       String  @unique
+  avatar_url String?
+  phone      String?
+  bio        String?
+  telegram   String? @unique
+  instagram  String? @unique
+
+  // --- Relations ---
+  auth_providers AuthProvider[] @relation("user_auth_providers")
+  refresh_tokens RefreshToken[] @relation("user_refresh_token")
 
   @@map("users")
 }
