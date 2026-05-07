@@ -14,6 +14,7 @@ import { AuthResponse } from './types/auth-response.type';
 import { ENV_MAP, VALIDATION_ERROR_MAP } from '@common/enums';
 import { ConfigService } from '@nestjs/config';
 import { JwtPayload } from './types/jwt-payload.type';
+import { GoogleUserData } from './types/google-user-data.model';
 
 @Injectable()
 export class AuthService {
@@ -101,6 +102,68 @@ export class AuthService {
     return this.generateTokenResponse(user, response);
   }
 
+  async findOrCreateGoogleUser(data: GoogleUserData) {
+    const existingProvider = await this.prisma.authProvider.findUnique({
+      where: {
+        provider_provider_id: {
+          provider: 'google',
+          provider_id: data.googleId,
+        },
+      },
+      include: { user: true },
+    });
+
+    // Уже логинился через Google — просто возвращаем данные
+    if (existingProvider) {
+      return existingProvider.user;
+    }
+
+    // 2. Может уже есть аккаунт с таким email (зарегался через email ранее)?
+    const existingUser = await this.usersService.findByEmail(data.email);
+
+    if (existingUser) {
+      // Account linking — добавляем Google как ещё один способ входа
+      await this.prisma.authProvider.create({
+        data: {
+          user_id: existingUser.id,
+          provider: 'google',
+          provider_id: data.googleId,
+        },
+      });
+
+      return existingUser;
+    }
+
+    // 3. Совсем новый пользователь — создаём
+    const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ');
+    const slug = await this.generateSlug(fullName);
+
+    const newUser = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: data.email,
+          first_name: data.first_name ?? 'User',
+          last_name: data.last_name,
+          slug,
+          avatar_url: data.avatar_url,
+          is_email_verified: true,
+        },
+      });
+
+      await tx.authProvider.create({
+        data: {
+          provider: 'google',
+          provider_id: data.googleId,
+          user_id: user.id,
+        },
+      });
+
+      return user;
+    });
+
+    return newUser;
+  }
+
   async refresh(refreshToken: string, response: Response): Promise<AuthResponse> {
     // 1. Searching for a token in DB
     const tokenRecord = await this.prisma.refreshToken
@@ -142,7 +205,7 @@ export class AuthService {
     return { message: 'Вышли успешно' };
   }
 
-  private async generateTokenResponse(user: User, response: Response): Promise<AuthResponse> {
+  async generateTokenResponse(user: User, response: Response): Promise<AuthResponse> {
     const payload: JwtPayload = { sub: user.id };
 
     const access_token = await this.jwtService.signAsync(payload, {

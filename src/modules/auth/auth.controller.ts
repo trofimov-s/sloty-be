@@ -20,6 +20,8 @@ import { AuthResponse } from './types/auth-response.type';
 import { RefreshToken } from '@common/decorators';
 import { VALIDATION_ERROR_MAP } from '@common/enums';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { GoogleAuthGuard } from './guards/google-auth.guard';
+import { User } from '@prisma-generated/prisma/client';
 
 @Controller('auth')
 export class AuthController {
@@ -60,5 +62,24 @@ export class AuthController {
   @Get('me')
   getMe(@Req() req: Request & { user: { id: string; slug: string } }) {
     return req.user;
+  }
+
+  @UseGuards(GoogleAuthGuard)
+  @Get('google')
+  googleAuth() {}
+
+  @UseGuards(GoogleAuthGuard)
+  @Get('google/callback')
+  async googleCallback(@Req() req: Request & { user: User }, @Res() response: Response) {
+    // req.user — это то что вернул validate() в GoogleStrategy
+    // Генерируем свои токены и редиректим на фронт
+    const { access_token } = await this.authService.generateTokenResponse(
+      req.user,
+      response, // для установки refresh_token в cookie
+    );
+
+    // Редиректим на фронт с access_token в URL
+    // Фронт прочитает его из URL и сохранит
+    response.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${access_token}`);
   }
 }
